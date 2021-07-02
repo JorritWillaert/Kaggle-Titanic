@@ -14,6 +14,7 @@ from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 import torch.nn.functional as functional
 import torch.nn as nn
+from torch.autograd import Variable
 
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
@@ -22,6 +23,7 @@ from sklearn.model_selection import train_test_split
 # For example, running this (by clicking run or pressing Shift+Enter) will list all files under the input directory
 
 import os
+import csv
 for dirname, _, filenames in os.walk('/kaggle/input'):
     for filename in filenames:
         print(os.path.join(dirname, filename))
@@ -33,6 +35,7 @@ for dirname, _, filenames in os.walk('/kaggle/input'):
     /kaggle/input/titanic/train.csv
     /kaggle/input/titanic/test.csv
     /kaggle/input/titanic/gender_submission.csv
+    /kaggle/input/titanic-model-02-07-2021/model_02_07_2021_epoch_200.pt
     
 
 
@@ -298,6 +301,7 @@ df['Age'].fillna(df['Age'].median(), inplace = True)
 df['Fare'].fillna(df['Fare'].median(), inplace = True)
 df = pd.concat([df, pd.get_dummies(df['Embarked'], prefix='Embarked')], axis=1)
 del df['Embarked']
+X_test_passengers = test['PassengerId']
 df.drop(['Name', 'Cabin', 'Ticket', 'PassengerId'], axis=1, inplace=True)
 ```
 
@@ -582,7 +586,7 @@ Seperate back *train* and *test* data
 ```python
 X_train = df[pd.notnull(df['Survived'])].drop(['Survived'], axis=1)
 y_train = df[pd.notnull(df['Survived'])]['Survived']
-X_test = df[pd.notnull(df['Survived'])].drop(['Survived'], axis=1)
+X_test = df[pd.isnull(df['Survived'])].drop(['Survived'], axis=1)
 ```
 
 Convert to tensors
@@ -591,7 +595,7 @@ Convert to tensors
 ```python
 X_train_t = torch.tensor(X_train.values)
 y_train_t = torch.tensor(y_train.values).float()
-X_test_t = torch.tensor(X_train.values)
+X_test_t = torch.tensor(X_test.values)
 ```
 
 Create a *cross validation* set
@@ -614,7 +618,7 @@ print(X_test_t.shape)
 
     torch.Size([712, 9]) torch.Size([179, 9])
     torch.Size([712]) torch.Size([179])
-    torch.Size([891, 9])
+    torch.Size([418, 9])
     
 
 
@@ -741,93 +745,129 @@ train_loss, val_loss = train(network, device, dataloader_train, dataloader_val, 
 ```
 
     Training on device: cpu
-    Phase: train, epoch loss: 0.7370699764637465
-    Phase: val, epoch loss: 0.721055590240649
-    Accuracy: 0.6256983240223464
-    Phase: train, epoch loss: 0.6766130200932535
-    Phase: val, epoch loss: 0.6750174367894007
-    Accuracy: 0.7821229050279329
-    Phase: train, epoch loss: 0.6719620736797204
-    Phase: val, epoch loss: 0.6604939892305343
-    Accuracy: 0.7932960893854749
-    Phase: train, epoch loss: 0.6471231278408779
-    Phase: val, epoch loss: 0.6410782030840826
-    Accuracy: 0.7988826815642458
-    Phase: train, epoch loss: 0.6321745293863704
-    Phase: val, epoch loss: 0.6386876026345365
+    Phase: train, epoch loss: 0.7500095206700014
+    Phase: val, epoch loss: 0.746956148627084
+    Accuracy: 0.6759776536312849
+    
+
+    /opt/conda/lib/python3.7/site-packages/torch/nn/functional.py:1639: UserWarning: nn.functional.sigmoid is deprecated. Use torch.sigmoid instead.
+      warnings.warn("nn.functional.sigmoid is deprecated. Use torch.sigmoid instead.")
+    
+
+    Phase: train, epoch loss: 0.6989852819549903
+    Phase: val, epoch loss: 0.688111523676185
+    Accuracy: 0.7374301675977654
+    Phase: train, epoch loss: 0.6610210236538662
+    Phase: val, epoch loss: 0.6522676478551087
     Accuracy: 0.8044692737430168
-    Phase: train, epoch loss: 0.629747315738978
-    Phase: val, epoch loss: 0.6383322603875698
-    Accuracy: 0.8268156424581006
-    Phase: train, epoch loss: 0.6311275128568157
-    Phase: val, epoch loss: 0.6325195568233895
-    Accuracy: 0.8379888268156425
-    Phase: train, epoch loss: 0.617671629016319
-    Phase: val, epoch loss: 0.6423453858444811
+    Phase: train, epoch loss: 0.6394790317235368
+    Phase: val, epoch loss: 0.6450501553839145
+    Accuracy: 0.8156424581005587
+    Phase: train, epoch loss: 0.6441745650902223
+    Phase: val, epoch loss: 0.6406888695402518
+    Accuracy: 0.8156424581005587
+    Phase: train, epoch loss: 0.6182442140043451
+    Phase: val, epoch loss: 0.6365754324630652
     Accuracy: 0.8212290502793296
-    Phase: train, epoch loss: 0.6010052434514078
-    Phase: val, epoch loss: 0.6348270224459345
-    Accuracy: 0.8379888268156425
-    Phase: train, epoch loss: 0.6272932438368208
-    Phase: val, epoch loss: 0.6272513959660876
+    Phase: train, epoch loss: 0.6528599503334989
+    Phase: val, epoch loss: 0.6293146357190009
+    Accuracy: 0.8435754189944135
+    Phase: train, epoch loss: 0.6156364719519455
+    Phase: val, epoch loss: 0.6348543646615311
     Accuracy: 0.8324022346368715
-    Phase: train, epoch loss: 0.614928583080849
-    Phase: val, epoch loss: 0.6347299501216611
+    Phase: train, epoch loss: 0.6249435939145892
+    Phase: val, epoch loss: 0.6385784895060449
+    Accuracy: 0.8379888268156425
+    Phase: train, epoch loss: 0.6158574190032616
+    Phase: val, epoch loss: 0.6353226773565708
     Accuracy: 0.8324022346368715
-    Phase: train, epoch loss: 0.6245186034213291
-    Phase: val, epoch loss: 0.6367610526484484
-    Accuracy: 0.8435754189944135
-    Phase: train, epoch loss: 0.6123484493641371
-    Phase: val, epoch loss: 0.6345060550966742
+    Phase: train, epoch loss: 0.6223965387665824
+    Phase: val, epoch loss: 0.6355847406653719
+    Accuracy: 0.8324022346368715
+    Phase: train, epoch loss: 0.6187425516964344
+    Phase: val, epoch loss: 0.6331084267387177
     Accuracy: 0.8379888268156425
-    Phase: train, epoch loss: 0.6005783857924215
-    Phase: val, epoch loss: 0.6418425277624716
-    Accuracy: 0.8435754189944135
-    Phase: train, epoch loss: 0.6222814817107125
-    Phase: val, epoch loss: 0.6354557868488674
-    Accuracy: 0.8435754189944135
-    Phase: train, epoch loss: 0.5959445653336771
-    Phase: val, epoch loss: 0.6377820915350035
+    Phase: train, epoch loss: 0.6244893877693777
+    Phase: val, epoch loss: 0.6418670995275402
     Accuracy: 0.8379888268156425
-    Phase: train, epoch loss: 0.6120018637582157
-    Phase: val, epoch loss: 0.6483729485026951
-    Accuracy: 0.8435754189944135
-    Phase: train, epoch loss: 0.6051727252060108
-    Phase: val, epoch loss: 0.6477119829401624
+    Phase: train, epoch loss: 0.6148248468891958
+    Phase: val, epoch loss: 0.6355740637752597
     Accuracy: 0.8379888268156425
-    Phase: train, epoch loss: 0.5927651678578237
-    Phase: val, epoch loss: 0.6463567424752859
+    Phase: train, epoch loss: 0.61067996935898
+    Phase: val, epoch loss: 0.6341138019242101
     Accuracy: 0.8379888268156425
-    Phase: train, epoch loss: 0.5971969299102098
-    Phase: val, epoch loss: 0.6489054077830394
+    Phase: train, epoch loss: 0.6284844259197793
+    Phase: val, epoch loss: 0.6336266714767371
+    Accuracy: 0.8324022346368715
+    Phase: train, epoch loss: 0.6137268730763639
+    Phase: val, epoch loss: 0.6372238670647478
     Accuracy: 0.8435754189944135
-    Phase: train, epoch loss: 0.6096677244379279
-    Phase: val, epoch loss: 0.6458713595427614
-    Accuracy: 0.8491620111731844
-    Phase: train, epoch loss: 0.6048277147700277
-    Phase: val, epoch loss: 0.6477895768661073
+    Phase: train, epoch loss: 0.6046084902259741
+    Phase: val, epoch loss: 0.6455482823888683
+    Accuracy: 0.8324022346368715
+    Phase: train, epoch loss: 0.6147312876883517
+    Phase: val, epoch loss: 0.6365692309161138
+    Accuracy: 0.8324022346368715
+    Phase: train, epoch loss: 0.6180874310182721
+    Phase: val, epoch loss: 0.6368886212396888
+    Accuracy: 0.8379888268156425
+    Phase: train, epoch loss: 0.6117992776163509
+    Phase: val, epoch loss: 0.6310592310388661
+    Accuracy: 0.8379888268156425
+    Phase: train, epoch loss: 0.6172718305266305
+    Phase: val, epoch loss: 0.6451516604290328
+    Accuracy: 0.8379888268156425
+    Phase: train, epoch loss: 0.6047140453638655
+    Phase: val, epoch loss: 0.6597522330683703
     Accuracy: 0.8435754189944135
-    Phase: train, epoch loss: 0.5955894529149773
-    Phase: val, epoch loss: 0.644979679384711
+    Phase: train, epoch loss: 0.5996088499433538
+    Phase: val, epoch loss: 0.6491866511339582
     Accuracy: 0.8435754189944135
-    Phase: train, epoch loss: 0.6013867024625286
-    Phase: val, epoch loss: 0.644884652931597
-    Accuracy: 0.8435754189944135
-    Phase: train, epoch loss: 0.6025764915380585
-    Phase: val, epoch loss: 0.6524175079175214
+    Phase: train, epoch loss: 0.5983408167121116
+    Phase: val, epoch loss: 0.6487724687800062
     Accuracy: 0.8435754189944135
     Training complete
     
 
-
-```python
-
-```
+### Evaluate
 
 
 ```python
-
+network = Network(X_train_t.shape[1])
+network.load_state_dict(torch.load('../input/titanic-model-02-07-2021/model_02_07_2021_epoch_200.pt'))
+network.eval()
 ```
+
+
+
+
+    Network(
+      (fc1): Linear(in_features=9, out_features=250, bias=True)
+      (fc2): Linear(in_features=250, out_features=1, bias=True)
+    )
+
+
+
+
+```python
+test_var = Variable(torch.FloatTensor(X_test_t), requires_grad=True)
+with torch.no_grad():
+    output_test = network(test_var)
+survived = torch.round(output_test).numpy()
+
+submission = [['PassengerId', 'Survived']]
+for i in range(output_test.shape[0]):
+    submission.append([X_test_passengers[i], int(survived[i][0])])
+
+with open('/kaggle/working/submission.csv', 'w') as f:
+    writer = csv.writer(f)
+    writer.writerows(submission)
+
+print('Writing complete')
+```
+
+    Writing complete
+    
 
 
 ```python
