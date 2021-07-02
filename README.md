@@ -293,6 +293,9 @@ df = pd.concat([train, test], axis=0, sort=True)
 #Convert to category dtype
 df['Sex'] = df['Sex'].astype('category')
 df['Sex'] = df['Sex'].cat.codes
+df['Embarked'].fillna(df['Embarked'].mode()[0], inplace = True)
+df['Age'].fillna(df['Age'].median(), inplace = True)
+df['Fare'].fillna(df['Fare'].median(), inplace = True)
 df = pd.concat([df, pd.get_dummies(df['Embarked'], prefix='Embarked')], axis=1)
 del df['Embarked']
 df.drop(['Name', 'Cabin', 'Ticket', 'PassengerId'], axis=1, inplace=True)
@@ -458,25 +461,25 @@ display_all(df.describe(include='all').T)
   <tbody>
     <tr>
       <th>Age</th>
-      <td>1046.0</td>
-      <td>-9.801147e-09</td>
-      <td>1.000478</td>
-      <td>-2.062328</td>
-      <td>-0.616463</td>
-      <td>-0.130575</td>
-      <td>0.632964</td>
-      <td>3.478882</td>
+      <td>1309.0</td>
+      <td>2.914207e-09</td>
+      <td>1.000382</td>
+      <td>-2.273836</td>
+      <td>-0.581628</td>
+      <td>-0.116523</td>
+      <td>0.426099</td>
+      <td>3.914388</td>
     </tr>
     <tr>
       <th>Fare</th>
-      <td>1308.0</td>
-      <td>0.000000e+00</td>
+      <td>1309.0</td>
+      <td>-2.914207e-09</td>
       <td>1.000382</td>
-      <td>-0.643529</td>
-      <td>-0.490921</td>
-      <td>-0.364161</td>
-      <td>-0.039051</td>
-      <td>9.258680</td>
+      <td>-0.643464</td>
+      <td>-0.490805</td>
+      <td>-0.364003</td>
+      <td>-0.038786</td>
+      <td>9.262028</td>
     </tr>
     <tr>
       <th>Parch</th>
@@ -558,8 +561,8 @@ display_all(df.describe(include='all').T)
     <tr>
       <th>Embarked_S</th>
       <td>1309.0</td>
-      <td>6.982429e-01</td>
-      <td>0.459196</td>
+      <td>6.997708e-01</td>
+      <td>0.458533</td>
       <td>0.000000</td>
       <td>0.000000</td>
       <td>1.000000</td>
@@ -612,7 +615,6 @@ print(X_test_t.shape)
     torch.Size([712, 9]) torch.Size([179, 9])
     torch.Size([712]) torch.Size([179])
     torch.Size([891, 9])
-    torch.float32 torch.float32
     
 
 
@@ -620,7 +622,8 @@ print(X_test_t.shape)
 class TitanicDataset(Dataset):
     def __init__(self, features, labels):
         self.features = features
-        self.labels = labels.type(torch.LongTensor)
+        self.labels = labels.type(torch.float32)
+        self.labels = torch.unsqueeze(self.labels, 1)
         
     def __len__(self):
         return len(self.labels)
@@ -645,7 +648,7 @@ class Network(nn.Module):
         super().__init__()
         
         self.fc1 = nn.Linear(channels_in, 250)
-        self.fc2 = nn.Linear(250, 2)
+        self.fc2 = nn.Linear(250, 1)
         
     def forward(self, x):
         x = self.fc1(x)
@@ -666,10 +669,9 @@ network = Network(X_train_t.shape[1])
 ```python
 def train(network, device, dataloader_train, dataloader_val, loss_function, optimizer, epochs):
     network.to(device = device)
-    train_loss, test_loss = [], []
+    train_loss, val_loss = [], []
     
     for epoch in range(epochs):
-        print('Epoch: ' + str(epoch))
         for phase in ['train', 'val']:
             if phase == 'train':
                 network.train(True)
@@ -679,6 +681,7 @@ def train(network, device, dataloader_train, dataloader_val, loss_function, opti
                 dataloader = dataloader_val
             
             actual_loss = 0.0
+            actual_acc = 0.0
             batch = 0
             
             for features, labels in dataloader:
@@ -696,24 +699,37 @@ def train(network, device, dataloader_train, dataloader_val, loss_function, opti
                     with torch.no_grad():
                         outputs = network(features)
                         loss = loss_function(outputs, labels)
-                
+                        acc = accuracy_metric(outputs, labels)
+                        actual_acc += acc
                 actual_loss += loss.item() * dataloader.batch_size
-                
+            
+            actual_acc /= len(dataloader.dataset)
             epoch_loss = actual_loss / len(dataloader.dataset)
-            print('Phase: ' + str(phase) + ', epoch loss: ' + str(epoch_loss))
+            if epoch % 10 == 0:
+                print('Phase: ' + str(phase) + ', epoch loss: ' + str(epoch_loss))
+                if phase == 'val':
+                    print('Accuracy: ' + str(actual_acc))
+                torch.save(network.state_dict(), "/kaggle/working/model_02_07_2021_epoch_" + str(epoch) + '.pt')
             
             if phase == 'train':
                 train_loss.append(epoch_loss)
             else:
-                test_loss.append(epoch_loss)
+                val_loss.append(epoch_loss)
     print('Training complete')
-    return train_loss, test_loss
+    return train_loss, val_loss
 ```
 
 
 ```python
-loss_function = nn.CrossEntropyLoss()
-optimizer = torch.optim.Adam(network.parameters())
+loss_function = nn.BCELoss()
+optimizer = torch.optim.Adam(network.parameters(), lr = 0.0005)
+
+def accuracy_metric(outputs, labels):
+    acc = 0
+    for i in range(outputs.shape[0]):
+        if (outputs[i] > 0.5 and labels[i] == 1) or (outputs[i] <= 0.5 and labels[i] == 0):
+            acc += 1
+    return acc
 ```
 
 
@@ -721,274 +737,87 @@ optimizer = torch.optim.Adam(network.parameters())
 device = (torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu'))
 print('Training on device: ' + str(device))
 
-train(network, device, dataloader_train, dataloader_val, loss_function, optimizer, epochs = 50)
+train_loss, val_loss = train(network, device, dataloader_train, dataloader_val, loss_function, optimizer, epochs = 250)
 ```
 
     Training on device: cpu
-    Epoch: 0
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 1
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 2
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 3
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 4
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 5
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 6
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 7
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 8
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 9
-    
-
-    /opt/conda/lib/python3.7/site-packages/torch/nn/functional.py:1639: UserWarning: nn.functional.sigmoid is deprecated. Use torch.sigmoid instead.
-      warnings.warn("nn.functional.sigmoid is deprecated. Use torch.sigmoid instead.")
-    
-
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 10
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 11
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 12
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 13
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 14
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 15
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 16
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 17
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 18
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 19
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 20
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 21
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 22
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 23
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 24
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 25
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 26
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 27
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 28
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 29
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 30
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 31
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 32
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 33
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 34
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 35
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 36
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 37
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 38
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 39
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 40
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 41
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 42
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 43
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 44
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 45
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 46
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 47
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 48
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
-    Epoch: 49
-    Phase: train, epoch loss: nan
-    Phase: val, epoch loss: nan
+    Phase: train, epoch loss: 0.7370699764637465
+    Phase: val, epoch loss: 0.721055590240649
+    Accuracy: 0.6256983240223464
+    Phase: train, epoch loss: 0.6766130200932535
+    Phase: val, epoch loss: 0.6750174367894007
+    Accuracy: 0.7821229050279329
+    Phase: train, epoch loss: 0.6719620736797204
+    Phase: val, epoch loss: 0.6604939892305343
+    Accuracy: 0.7932960893854749
+    Phase: train, epoch loss: 0.6471231278408779
+    Phase: val, epoch loss: 0.6410782030840826
+    Accuracy: 0.7988826815642458
+    Phase: train, epoch loss: 0.6321745293863704
+    Phase: val, epoch loss: 0.6386876026345365
+    Accuracy: 0.8044692737430168
+    Phase: train, epoch loss: 0.629747315738978
+    Phase: val, epoch loss: 0.6383322603875698
+    Accuracy: 0.8268156424581006
+    Phase: train, epoch loss: 0.6311275128568157
+    Phase: val, epoch loss: 0.6325195568233895
+    Accuracy: 0.8379888268156425
+    Phase: train, epoch loss: 0.617671629016319
+    Phase: val, epoch loss: 0.6423453858444811
+    Accuracy: 0.8212290502793296
+    Phase: train, epoch loss: 0.6010052434514078
+    Phase: val, epoch loss: 0.6348270224459345
+    Accuracy: 0.8379888268156425
+    Phase: train, epoch loss: 0.6272932438368208
+    Phase: val, epoch loss: 0.6272513959660876
+    Accuracy: 0.8324022346368715
+    Phase: train, epoch loss: 0.614928583080849
+    Phase: val, epoch loss: 0.6347299501216611
+    Accuracy: 0.8324022346368715
+    Phase: train, epoch loss: 0.6245186034213291
+    Phase: val, epoch loss: 0.6367610526484484
+    Accuracy: 0.8435754189944135
+    Phase: train, epoch loss: 0.6123484493641371
+    Phase: val, epoch loss: 0.6345060550966742
+    Accuracy: 0.8379888268156425
+    Phase: train, epoch loss: 0.6005783857924215
+    Phase: val, epoch loss: 0.6418425277624716
+    Accuracy: 0.8435754189944135
+    Phase: train, epoch loss: 0.6222814817107125
+    Phase: val, epoch loss: 0.6354557868488674
+    Accuracy: 0.8435754189944135
+    Phase: train, epoch loss: 0.5959445653336771
+    Phase: val, epoch loss: 0.6377820915350035
+    Accuracy: 0.8379888268156425
+    Phase: train, epoch loss: 0.6120018637582157
+    Phase: val, epoch loss: 0.6483729485026951
+    Accuracy: 0.8435754189944135
+    Phase: train, epoch loss: 0.6051727252060108
+    Phase: val, epoch loss: 0.6477119829401624
+    Accuracy: 0.8379888268156425
+    Phase: train, epoch loss: 0.5927651678578237
+    Phase: val, epoch loss: 0.6463567424752859
+    Accuracy: 0.8379888268156425
+    Phase: train, epoch loss: 0.5971969299102098
+    Phase: val, epoch loss: 0.6489054077830394
+    Accuracy: 0.8435754189944135
+    Phase: train, epoch loss: 0.6096677244379279
+    Phase: val, epoch loss: 0.6458713595427614
+    Accuracy: 0.8491620111731844
+    Phase: train, epoch loss: 0.6048277147700277
+    Phase: val, epoch loss: 0.6477895768661073
+    Accuracy: 0.8435754189944135
+    Phase: train, epoch loss: 0.5955894529149773
+    Phase: val, epoch loss: 0.644979679384711
+    Accuracy: 0.8435754189944135
+    Phase: train, epoch loss: 0.6013867024625286
+    Phase: val, epoch loss: 0.644884652931597
+    Accuracy: 0.8435754189944135
+    Phase: train, epoch loss: 0.6025764915380585
+    Phase: val, epoch loss: 0.6524175079175214
+    Accuracy: 0.8435754189944135
     Training complete
     
-
-
-
-
-    ([nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan],
-     [nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan,
-      nan])
-
-
 
 
 ```python
