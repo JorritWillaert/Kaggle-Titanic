@@ -1,3 +1,6 @@
+# Titanic - Machine Learning from Disaster
+
+
 ```python
 # This Python 3 environment comes with many helpful analytics libraries installed
 # It is defined by the kaggle/python Docker image: https://github.com/kaggle/docker-python
@@ -18,7 +21,42 @@ for dirname, _, filenames in os.walk('/kaggle/input'):
 # You can also write temporary files to /kaggle/temp/, but they won't be saved outside of the current session
 ```
 
-    /kaggle/input/titanic/train.csv
-    /kaggle/input/titanic/test.csv
-    /kaggle/input/titanic/gender_submission.csv
-    
+
+```python
+train = pd.read_csv("/kaggle/input/titanic/train.csv")
+train.head()
+```
+
+
+```python
+test = pd.read_csv("/kaggle/input/titanic/test.csv")
+test.head()
+```
+
+Obviously, no 'Survived' column
+
+### Encode categorical Variables
+
+
+```python
+df = pd.concat([train, test], axis=0, sort=True)
+
+#Convert to category dtype
+df['Sex'] = df['Sex'].astype('category')
+df['Sex'] = df['Sex'].cat.codes
+df = pd.concat([df, pd.get_dummies(df['Embarked'], prefix='Embarked')], axis=1)
+del df['Embarked']
+df.drop(['Name', 'Cabin', 'Ticket', 'PassengerId'], axis=1, inplace=True)
+```
+
+
+```python
+df.head()
+```
+
+### Scale continuous variables
+
+
+```python
+
+```
